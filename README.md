@@ -30,7 +30,7 @@
 
    下图为不同阶段的栈帧示意图：
 
-   ![Phase 1](./Pictures/Phase 1.png)
+   ![Phase 1](./Pictures/Phase1.png)
 
 3. **实验过程**
 
@@ -99,7 +99,7 @@
 
    下图为不同阶段的栈帧示意图：
 
-   ![Phase 2](./Pictures/Phase 2.png)
+   ![Phase 2](./Pictures/Phase2.png)
 
 3. **实验过程**
 
@@ -214,7 +214,7 @@
 
    下图为不同阶段的栈帧示意图：
 
-   ![Phase 3](./Pictures/Phase 3.png)
+   ![Phase 3](./Pictures/Phase3.png)
 
 3. **实验过程**
 
@@ -385,7 +385,7 @@
 
    下图为不同阶段的栈帧示意图：
 
-   ![Phase 4](./Pictures/Phase 4.png)
+   ![Phase 4](./Pictures/Phase4.png)
 
 3. **实验过程**
 
@@ -467,7 +467,7 @@
 
    下图为不同阶段的栈帧示意图：
 
-   ![Phase 5](./Pictures/Phase 5.png)
+   ![Phase 5](./Pictures/Phase5.png)
 
 3. **实验过程**
 
